@@ -6,8 +6,11 @@ RSpec.describe SysStuff do
   end
 
   it "does something useful" do
-    malloc = SysStuff::Malloc.new
+    malloc = SysStuff::Posix::Malloc.new
     malloc.alloc(10000)
     malloc.free
+
+    sem = SysStuff::Posix::NamedSemaphore.new
+    sem.hello
   end
 end
