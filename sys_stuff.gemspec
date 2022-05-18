@@ -8,7 +8,7 @@ Gem::Specification.new do |spec|
   spec.authors       = ["Dave Byrne"]
   spec.email         = ["davebyrne82@gmail.com"]
 
-  spec.summary       = "Low level POSIX and SysV support missing from the Ruby stdlib."
+  spec.summary       = "Support for POSIX and SysV functions missing from the Ruby stdlib."
   spec.description   = "Missing POSIX and SysV support for semaphores and more."
   spec.homepage      = "https://github.com/davebyrne/ruby-sys_stuff"
   spec.required_ruby_version = ">= 2.4.0"
