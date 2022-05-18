@@ -6,6 +6,8 @@ RSpec.describe SysStuff do
   end
 
   it "does something useful" do
-    expect(false).to eq(true)
+    malloc = SysStuff::Malloc.new
+    malloc.alloc(10000)
+    malloc.free
   end
 end
