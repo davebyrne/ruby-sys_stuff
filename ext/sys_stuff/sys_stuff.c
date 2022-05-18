@@ -1,118 +1,127 @@
 #include <ruby.h>
 #include <semaphore.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <errno.h>
 
-struct sys_stuff {
-  size_t size;
-  void *ptr;
-};
-
-static void
-sys_stuff_free(void *p) {
-  struct sys_stuff *ptr = p;
-
-  if (ptr->size > 0)
-    free(ptr->ptr);
-}
-
-static VALUE
-sys_stuff_alloc(VALUE klass) {
-  VALUE obj;
-  struct sys_stuff *ptr;
-
-  obj = Data_Make_Struct(klass, struct sys_stuff, NULL, sys_stuff_free, ptr);
-
-  ptr->size = 0;
-  ptr->ptr  = NULL;
-
-  return obj;
-}
-
-static VALUE
-sys_stuff_init(VALUE self, VALUE size) {
-  struct sys_stuff *ptr;
-  size_t requested = NUM2SIZET(size);
-
-  if (0 == requested)
-    rb_raise(rb_eArgError, "unable to allocate 0 bytes");
-
-  Data_Get_Struct(self, struct sys_stuff, ptr);
-
-  ptr->ptr = malloc(requested);
-
-  if (NULL == ptr->ptr)
-    rb_raise(rb_eNoMemError, "unable to allocate %ld bytes", requested);
-
-  printf("allocating %ld bytes\n", requested);
-
-  ptr->size = requested;
-
-  return self;
-}
-
-static VALUE
-sys_stuff_release(VALUE self) {
-  struct sys_stuff *ptr;
-
-  Data_Get_Struct(self, struct sys_stuff, ptr);
-
-  printf("Freeing %ld\n", ptr->size);
-
-  if (0 == ptr->size)
-    return self;
-
-  ptr->size = 0;
-  free(ptr->ptr);
-
-  
-
-  return self;
-}
-
-
-typedef struct sys_stuff_posix_namedsemaphore {
+typedef struct posix_namedsemaphore {
   sem_t *sem;
-  int a;
-} sys_stuff_posix_namedsemaphore;
+} posix_namedsemaphore;
 
 
-static VALUE
-sys_stuff_posix_namedsemaphore_alloc(VALUE klass) {
+static VALUE posix_namedsemaphore_alloc(VALUE klass) {
   VALUE obj;
-  sys_stuff_posix_namedsemaphore *ptr;
+  posix_namedsemaphore *ptr;
 
-  ptr = ruby_xmalloc(sizeof(sys_stuff_posix_namedsemaphore));
+  ptr = ruby_xmalloc(sizeof(posix_namedsemaphore));
   obj = Data_Wrap_Struct(klass, NULL, ruby_xfree, ptr);
   ptr->sem = NULL;
-  ptr->a = 77;
 
   return obj;
 }
 
+static VALUE posix_namedsemaphore_create(VALUE self, VALUE rb_initial_value) { 
+  VALUE rb_name = rb_ivar_get(self, rb_intern("@name"));
 
-static VALUE
-sys_stuff_posix_hello(VALUE self) {
- 
-  sys_stuff_posix_namedsemaphore *ptr;
-  Data_Get_Struct(self, sys_stuff_posix_namedsemaphore, ptr);
-  printf("Hello from C POSIX sem is %d\n", ptr->a);
- 
+  Check_Type(rb_name, T_STRING);
+  Check_Type(rb_initial_value, T_FIXNUM);
+
+  const char *name = StringValuePtr(rb_name);
+  int initial_value = FIX2INT(rb_initial_value);
+
+  posix_namedsemaphore *ptr;
+  Data_Get_Struct(self, posix_namedsemaphore, ptr);
+
+  ptr->sem = sem_open(name, O_CREAT | O_EXCL, 0600, initial_value);
+
+  if(ptr->sem == SEM_FAILED) { 
+    rb_raise(rb_eRuntimeError, strerror(errno)); 
+  }
+
+  return self;
+
+}
+
+static VALUE posix_namedsemaphore_open(VALUE self) {
+  VALUE rb_name = rb_ivar_get(self, rb_intern("@name"));
+  Check_Type(rb_name, T_STRING);
+  const char* name = StringValuePtr(rb_name);
+
+  posix_namedsemaphore *ptr;
+  Data_Get_Struct(self, posix_namedsemaphore, ptr);
+
+  ptr->sem = sem_open(name, 0);
+
+  if(ptr->sem == SEM_FAILED) { 
+    rb_raise(rb_eRuntimeError, strerror(errno)); 
+  }
+
   return self;
 }
 
-void
-Init_sys_stuff(void) {
+static VALUE posix_namedsemaphore_close(VALUE self) { 
+
+  posix_namedsemaphore *ptr;
+  Data_Get_Struct(self, posix_namedsemaphore, ptr);
+
+  if(sem_close(ptr->sem) == -1) { 
+    rb_raise(rb_eRuntimeError, strerror(errno)); 
+  }
+
+  ptr->sem = NULL;
+  
+  return self;
+}
+
+static VALUE posix_namedsemaphore_unlink(VALUE self) { 
+  VALUE rb_name = rb_ivar_get(self, rb_intern("@name"));
+  Check_Type(rb_name, T_STRING);
+  const char* name = StringValuePtr(rb_name);
+
+  if(sem_unlink(name) == -1) { 
+    rb_raise(rb_eRuntimeError, strerror(errno)); 
+  }
+
+  return self;
+}
+
+static VALUE posix_namedsemaphore_wait(VALUE self) { 
+  posix_namedsemaphore *ptr;
+  Data_Get_Struct(self, posix_namedsemaphore, ptr);
+
+  if(sem_wait(ptr->sem) == -1) { 
+    rb_raise(rb_eRuntimeError, strerror(errno)); 
+  }
+
+  return self;
+}
+
+static VALUE posix_namedsemaphore_post(VALUE self) { 
+  posix_namedsemaphore *ptr;
+  Data_Get_Struct(self, posix_namedsemaphore, ptr);
+
+  if(sem_post(ptr->sem) == -1) { 
+    rb_raise(rb_eRuntimeError, strerror(errno)); 
+  }
+
+  return self;
+}
+
+
+
+void Init_sys_stuff(void) {
 
   VALUE cSysStuffPosix = rb_define_module_under(rb_define_module("SysStuff"), "Posix");
   
-  VALUE cSysStuff = rb_define_class_under(cSysStuffPosix, "Malloc", rb_cObject);
-
-  rb_define_alloc_func(cSysStuff, sys_stuff_alloc);
-  rb_define_method(cSysStuff, "alloc", sys_stuff_init, 1);
-  rb_define_method(cSysStuff, "free", sys_stuff_release, 0);
-
   VALUE cNamedSemaphore = rb_define_class_under(cSysStuffPosix, "NamedSemaphore", rb_cObject);
 
-  rb_define_alloc_func(cNamedSemaphore, sys_stuff_posix_namedsemaphore_alloc);
+  rb_define_alloc_func(cNamedSemaphore, posix_namedsemaphore_alloc);
 
-  rb_define_method(cNamedSemaphore, "hello", sys_stuff_posix_hello, 0);
+  rb_define_method(cNamedSemaphore, "create", posix_namedsemaphore_create, 1);
+  rb_define_method(cNamedSemaphore, "open", posix_namedsemaphore_open, 0);
+  rb_define_method(cNamedSemaphore, "close", posix_namedsemaphore_close, 0);
+  rb_define_method(cNamedSemaphore, "unlink!", posix_namedsemaphore_unlink, 0);
+  rb_define_method(cNamedSemaphore, "post", posix_namedsemaphore_post, 0);
+  rb_define_method(cNamedSemaphore, "wait", posix_namedsemaphore_wait, 0);
+
 }
